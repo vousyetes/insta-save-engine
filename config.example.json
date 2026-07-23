@@ -1,0 +1,16 @@
+{
+  "notion_token": "ntn_PASTE_YOUR_NOTION_INTEGRATION_TOKEN_HERE",
+  "notion_parent_page_id": "PASTE_THE_ID_OF_THE_NOTION_PAGE_YOU_SHARED_WITH_THE_INTEGRATION",
+  "instagram_saves_db_id": "",
+  "content_ideas_db_id": "",
+  "instagram_collections": [],
+  "instagram_expected_user_id": "",
+  "whisper_model_path": "",
+  "vision_model": "qwen2.5vl:7b",
+  "text_model": "gpt-oss:20b",
+  "instagram_cookies": {
+    "sessionid": "",
+    "csrftoken": "",
+    "ds_user_id": ""
+  }
+}

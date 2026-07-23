@@ -1,0 +1,30 @@
+# ── Secrets & personal data — NEVER commit ───────────────────────────────────
+config.json
+config.json.bak
+config.*.json
+!config.example.json
+ig_session.json
+state.json
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+sync.log
+sync-error.log
+*.log
+
+# ── Generated launchd plist (contains your local absolute paths) ─────────────
+com.user.insta-save-engine.plist
+
+# ── Python ───────────────────────────────────────────────────────────────────
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.python-version
+
+# ── Whisper models (large binaries — download locally, don't commit) ─────────
+models/
+*.bin
+
+# ── macOS ────────────────────────────────────────────────────────────────────
+.DS_Store
