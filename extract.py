@@ -156,13 +156,26 @@ CAPTION:
 {caption}
 
 INSPIRATION:""",
+
+    # Generic fallback for user-generated categories that don't match the ones
+    # above (the pipeline now derives categories from each person's own saves).
+    "DEFAULT": """Tu reçois le contenu d'un post Instagram (caption + éventuellement le texte lu dans la vidéo ou les slides).
+
+Si le post ne donne aucun contenu réel (juste « commente pour recevoir »), réponds EXACTEMENT : AUCUN_CONTENU
+
+Sinon, extrais l'essentiel utile et actionnable en quelques puces courtes : ce qu'il faut retenir, faire, ou réutiliser. Reste factuel, pas d'intro ni de conclusion, garde le contenu concret (noms, étapes, liens, chiffres) verbatim quand il y en a.
+
+CONTENU DU POST:
+{caption}
+
+EXTRAIT:""",
 }
 
 # ── Ollama extraction ─────────────────────────────────────────────────────────
 
 def extract_with_ollama(category: str, caption: str, url: str) -> str:
     """Call Ollama to extract structured content from a post caption."""
-    prompt_template = PROMPTS.get(category, PROMPTS["ASTUCE"])
+    prompt_template = PROMPTS.get(category, PROMPTS["DEFAULT"])
     full_caption = caption
     if url:
         full_caption = f"{caption}\n\nURL: {url}"
@@ -307,7 +320,9 @@ def get_category_from_name(name: str) -> str:
         return "TUTO"
     if "VIDÉO" in p or "VIDEO" in p or "IDÉE" in p:
         return "VIDÉO IDEA"
-    return "INSPIRATION"
+    # Unknown prefix → a user-generated category. Keep its real name so --cat
+    # filtering and the extraction prompt selection work on the actual scheme.
+    return p
 
 
 def strip_prefix(name: str) -> str:

@@ -11,7 +11,7 @@ Fait par [vousyetes](https://instagram.com/vousyetes). Licence MIT, tu en fais c
 ## Ce que ça fait, concrètement
 
 1. **Récupère** tes posts sauvegardés Instagram (tout, ou seulement certaines collections).
-2. **Classe** chaque post en 8 catégories : `PROMPT`, `REPO`, `OUTIL`, `WORKFLOW`, `ASTUCE`, `TUTO`, `VIDÉO IDEA`, `INSPIRATION`.
+2. **Classe** chaque post dans des catégories taillées pour TON contenu. Au premier passage, l'IA locale lit un échantillon de tes saves et génère 6 à 10 catégories qui collent à ce que tu sauvegardes (cuisine, code, déco, peu importe), puis range chaque post dedans. Sans Ollama (mode léger), elle retombe sur un jeu de catégories génériques par mots-clés.
 3. **Lit le média** quand la valeur n'est pas dans la légende : OCR des slides d'un carrousel, transcription de l'audio d'un reel, texte à l'écran. Tout en local, aucune donnée qui part ailleurs.
 4. **Extrait** le contenu utile : le prompt copiable, le nom de l'outil et son lien, les étapes d'un workflow, l'astuce en une phrase.
 5. **Écrit** le tout dans deux bases Notion : une pour les saves bruts, une pour les idées de contenu prêtes à produire.
@@ -127,7 +127,14 @@ On te demande ton identifiant, ton mot de passe (masqué), et éventuellement le
 
 Ouvre ta page Notion : tes deux bases se remplissent. La première fois, `sync.py` peut ramener plusieurs centaines de posts, c'est normal.
 
-En **mode léger**, tu t'arrêtes après `ideate.py` (pas de `extract.py`, il a besoin d'Ollama).
+Au tout premier `ideate.py`, l'outil s'arrête une minute pour lire un échantillon de tes saves et générer les catégories qui te correspondent (il faut qu'Ollama tourne). Elles sont écrites dans `config.json`, tu peux les relire ou les retoucher à la main :
+
+```bash
+.venv/bin/python discover_categories.py --show     # voir tes catégories
+.venv/bin/python discover_categories.py --force     # les régénérer de zéro
+```
+
+En **mode léger**, tu t'arrêtes après `ideate.py` (pas de `extract.py`, il a besoin d'Ollama). Sans Ollama, la génération de catégories ne tourne pas non plus : le classement retombe sur un jeu générique par mots-clés.
 
 ---
 
@@ -211,6 +218,7 @@ Le champ `whisper_model_path` dans `config.json` pointe vers ton modèle whisper
   "instagram_saves_db_id": "",                  // rempli par setup_notion.py
   "content_ideas_db_id": "",                    // rempli par setup_notion.py
   "instagram_collections": [],                  // [] = toutes tes collections ; sinon ["AI", "Inspiration"]
+  "categories": [],                              // rempli au 1er run par l'IA (catégories taillées pour toi)
   "instagram_expected_user_id": "",             // laisse vide (garde-fou multi-comptes, optionnel)
   "whisper_model_path": "",                      // rempli par install.sh
   "vision_model": "qwen2.5vl:7b",
@@ -251,7 +259,8 @@ Le pipeline est volontairement découpé en scripts indépendants, pour que chaq
 
 - **`sync.py`** : va chercher tes saves via l'API privée d'Instagram, récupère la miniature (elle devient la cover de la page Notion) et écrit chaque post dans la base `Instagram Saves` avec le statut `New`. Il déduplique via `state.json`, donc tu peux le relancer sans créer de doublons.
 - **`auth.py` / `setup_auth.py`** : la connexion Instagram. Le choix ici est « stable et discret ». On stocke les identifiants dans le Trousseau, on garde une session sur disque, et surtout on évite de se reconnecter à chaque run (c'est ce qui déclenche les alertes « intrus » d'Instagram). La sonde de session utilise un endpoint doux, pas le fil principal qui est sur-surveillé.
-- **`ideate.py`** : le classement. À base de règles (mots-clés + liste d'auteurs), pas de LLM, donc instantané et gratuit. Chaque save `New` devient une idée dans `Content Ideas`, taguée par catégorie et rangée dans un pilier de contenu.
+- **`discover_categories.py`** : au premier passage, lit un échantillon de tes saves et demande au modèle local de dessiner un jeu de catégories qui colle à TON contenu (nom, description, pilier). Écrit dans `config.json`. C'est ce qui rend l'outil universel au lieu d'être coincé sur une seule niche.
+- **`ideate.py`** : le classement. Quand tes catégories existent et qu'Ollama tourne, l'IA locale range chaque post dans la bonne (elle lit la caption, pas juste des mots-clés). Sinon, filet de secours par règles (mots-clés) avec un jeu générique. Chaque save `New` devient une idée dans `Content Ideas`, taguée par catégorie et rangée dans un pilier.
 - **`enrich.py`** : la lecture du média. Quand la valeur est dans l'image ou la vidéo, on télécharge le média et on le fait lire par les modèles locaux. La résolution vision est montée à 1536px parce qu'en dessous, le petit texte se coupe et le modèle se met à inventer des noms.
 - **`extract.py`** : l'extraction finale. Il envoie la légende (plus le texte lu dans le média si `--enrich`) au modèle texte local, avec un prompt spécifique à chaque catégorie, et écrit le résultat propre dans Notion. Il garde aussi le texte brut lu dans le média dans un bloc repliable, au cas où tu veuilles y revenir.
 - **`query.py`** : la recherche, pour piocher dans ta base depuis le terminal.

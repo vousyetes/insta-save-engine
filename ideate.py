@@ -21,12 +21,16 @@ import re
 import requests
 from pathlib import Path
 
+from discover_categories import ensure_categories, ollama_up
+
 BASE_DIR = Path(__file__).parent
 cfg = json.loads((BASE_DIR / "config.json").read_text())
 
 TOKEN    = cfg["notion_token"]
 SAVES_DB = cfg["instagram_saves_db_id"]
 IDEAS_DB = cfg["content_ideas_db_id"]
+OLLAMA   = "http://localhost:11434/api/generate"
+MODEL    = cfg.get("text_model", "gpt-oss:20b")
 
 HEADERS = {
     "Authorization": f"Bearer {TOKEN}",
@@ -191,6 +195,50 @@ def extract_first_lines(caption: str, n: int) -> str:
     lines = [l.strip() for l in caption.split("\n") if l.strip() and not l.strip().startswith("#")]
     return "\n".join(lines[:n])
 
+# ── AI classification (adapts to the user's own categories) ───────────────────
+
+def pillar_for(category: str, user_cats: list) -> str:
+    """Pillar of a category, from the user's generated scheme (fallback Teach)."""
+    for c in user_cats:
+        if c["name"].upper() == category.upper():
+            return c.get("pillar", "Teach")
+    return CATEGORY_TO_PILLAR.get(category, "Teach")
+
+
+def classify_llm(caption: str, url: str, media_type: str, user_cats: list) -> tuple:
+    """Ask the local model to file a post into ONE of the user's categories.
+    Returns (category_name, idea_text). Returns (None, "") so the caller can
+    fall back to the rule-based classifier when the model can't decide."""
+    text = (caption or url or "").strip()
+    if not text:
+        return (None, "")
+    names = [c["name"] for c in user_cats]
+    cat_block = "\n".join(f"- {c['name']}: {c.get('description','')}" for c in user_cats)
+    prompt = (
+        "You file a saved Instagram post into exactly one category.\n\n"
+        f"Categories:\n{cat_block}\n\n"
+        f"Post:\n{text[:1500]}\n\n"
+        "Answer with ONLY the exact category name from the list, nothing else."
+    )
+    try:
+        r = requests.post(OLLAMA, json={
+            "model": MODEL,
+            "prompt": prompt,
+            "stream": False,
+            "options": {"temperature": 0.1, "num_predict": 40},
+        }, timeout=120)
+        r.raise_for_status()
+        pick = r.json().get("response", "").strip().upper()
+    except Exception:
+        return (None, "")
+    # match the answer to a real category name (exact, then contained)
+    match = next((n for n in names if n.upper() == pick), None)
+    if not match:
+        match = next((n for n in names if n.upper() in pick or pick in n.upper()), None)
+    if not match:
+        return (None, "")
+    return (match, extract_first_lines(caption, 3))
+
 # ── Notion helpers ────────────────────────────────────────────────────────────
 
 def fetch_new_posts() -> list:
@@ -248,8 +296,9 @@ def get_thumbnail_from_ig(url: str) -> str:
     return ""
 
 
-def create_idea(author, caption, url, category, idea_text, media_type, thumbnail_url=""):
-    pillar = CATEGORY_TO_PILLAR.get(category, "Teach")
+def create_idea(author, caption, url, category, idea_text, media_type, thumbnail_url="", pillar=None):
+    if pillar is None:
+        pillar = CATEGORY_TO_PILLAR.get(category, "Teach")
     fmt = MEDIA_TO_FORMAT.get(media_type, "Carousel")
 
     if idea_text and len(idea_text) > 5:
@@ -314,11 +363,23 @@ def mark_reviewed(page_id):
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
+    # First pass: derive a category scheme that fits THIS person's saves, using
+    # the local model. On later runs it's already in config.json, so this is a
+    # no-op. With no Ollama (light mode) it returns [] and we fall back to the
+    # built-in keyword scheme below.
+    user_cats = ensure_categories()
+    use_llm = bool(user_cats) and ollama_up()
+    if use_llm:
+        print(f"Classifying with your {len(user_cats)} categories (local AI).\n")
+    else:
+        print("Classifying with the built-in keyword scheme "
+              "(light mode / Ollama off).\n")
+
     print("Fetching all Status=New posts from Notion...")
     posts = fetch_new_posts()
     print(f"Found {len(posts)} posts to process.\n")
 
-    counts = {cat: 0 for cat in CATEGORIES}
+    counts = {}
     errors = 0
 
     for i, page in enumerate(posts, 1):
@@ -329,8 +390,15 @@ def main():
         url = get_prop_text(props, "URL") or props.get("URL", {}).get("url", "")
         media_type = get_prop_text(props, "Type")
 
-        category, idea_text = classify(author, caption, url, media_type)
-        counts[category] += 1
+        # AI classification into the user's own categories; fall back to the
+        # rule-based classifier per-post if the model can't decide.
+        category, idea_text = (None, "")
+        if use_llm:
+            category, idea_text = classify_llm(caption, url, media_type, user_cats)
+        if not category:
+            category, idea_text = classify(author, caption, url, media_type)
+        pillar = pillar_for(category, user_cats)
+        counts[category] = counts.get(category, 0) + 1
 
         thumbnail_url = ""
         page_cover = page.get("cover")
@@ -339,11 +407,11 @@ def main():
         if not thumbnail_url and url:
             thumbnail_url = get_thumbnail_from_ig(url)
 
-        ok = create_idea(author, caption, url, category, idea_text, media_type, thumbnail_url)
+        ok = create_idea(author, caption, url, category, idea_text, media_type,
+                         thumbnail_url, pillar=pillar)
         if ok:
             mark_reviewed(page_id)
-            tag = "✓" if category == "INSPIRATION" else "★"
-            print(f"[{i:3}/{len(posts)}] {tag} [{category:<12}] @{author} — {(caption or url)[:55]}")
+            print(f"[{i:3}/{len(posts)}] ★ [{category:<14}] @{author} — {(caption or url)[:50]}")
         else:
             errors += 1
             print(f"[{i:3}/{len(posts)}] ✗ Failed for @{author}")
@@ -353,10 +421,9 @@ def main():
     print(f"\n{'─'*60}")
     print(f"Done! {len(posts) - errors} processed, {errors} errors.")
     print(f"\nBreakdown:")
-    for cat in CATEGORIES:
-        n = counts[cat]
+    for cat, n in sorted(counts.items(), key=lambda kv: -kv[1]):
         bar = "█" * (n // 5) if n else ""
-        print(f"  {cat:<15} {n:>4}  {bar}")
+        print(f"  {cat:<16} {n:>4}  {bar}")
 
 
 if __name__ == "__main__":

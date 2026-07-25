@@ -4,6 +4,7 @@
   "instagram_saves_db_id": "",
   "content_ideas_db_id": "",
   "instagram_collections": [],
+  "categories": [],
   "instagram_expected_user_id": "",
   "whisper_model_path": "",
   "vision_model": "qwen2.5vl:7b",
