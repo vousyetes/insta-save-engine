@@ -34,7 +34,24 @@ log = logging.getLogger("ig-auth")
 BASE_DIR        = Path(__file__).resolve().parent
 SESSION_FILE    = BASE_DIR / "ig_session.json"
 CONFIG_FILE     = BASE_DIR / "config.json"
+LOGIN_STAMP     = BASE_DIR / ".last_login"
 KEYRING_SERVICE = "insta-save-engine"
+
+# Every real password login fires a "new login" security alert on the account
+# and pushes Instagram's risk engine one notch further towards a checkpoint. A
+# broken session can otherwise turn into one login per scheduled run, which
+# reads as an intrusion attempt and gets the account repeatedly logged out.
+# These two cooldowns are the circuit breaker: after a real login we refuse to
+# send another one for a while, and a challenge means Instagram is already
+# unhappy, so we back off instead of hammering it at the next run.
+LOGIN_COOLDOWN_H = 6
+
+# Deliberately 20h and not 24h. The sync usually runs on a fixed daily
+# schedule, so a 24h backoff started by run N is still ticking (by seconds to
+# minutes) when run N+1 fires — the backoff silently eats a second day, every
+# time. Anything under ~23h leaves the intended guarantee intact — at most one
+# password login per day — while letting the next scheduled run actually retry.
+CHALLENGE_COOLDOWN_H = 20
 
 # Optional safety net: lock the sync to one Instagram account by numeric user_id.
 # Leave "instagram_expected_user_id" empty in config.json to disable the check
@@ -49,6 +66,39 @@ def _expected_user_id() -> str:
         return ""
 
 EXPECTED_USER_ID = _expected_user_id()
+
+
+# ── Login circuit breaker ─────────────────────────────────────────────────────
+
+def _read_stamp() -> tuple[float, float]:
+    """Return (timestamp_of_last_real_login, cooldown_hours_it_asked_for)."""
+    try:
+        raw = LOGIN_STAMP.read_text().split()
+        return float(raw[0]), float(raw[1])
+    except Exception:
+        return 0.0, 0.0
+
+
+def _write_stamp(hours: float) -> None:
+    try:
+        LOGIN_STAMP.write_text(f"{time.time()} {hours}")
+    except OSError:
+        pass
+
+
+def _assert_login_allowed() -> None:
+    """Raise if we logged in too recently, rather than firing another alert."""
+    last, hours = _read_stamp()
+    if not last:
+        return
+    waited = (time.time() - last) / 3600
+    if waited < hours:
+        raise RuntimeError(
+            f"Login cooldown active: last real login {waited:.1f}h ago, "
+            f"waiting {hours:.0f}h before sending another one (avoids "
+            f"spamming Instagram security alerts). Delete {LOGIN_STAMP.name} "
+            f"to force a login now."
+        )
 
 
 # ── Keychain credentials ──────────────────────────────────────────────────────
@@ -155,6 +205,10 @@ def get_authenticated_client() -> Client:
 
     # 2) Fresh login, reusing the device UUIDs from the old session if we have
     #    them (a stable device fingerprint lowers Instagram's suspicion).
+    #    Gated by the cooldown: a dead session is not a reason to log in three
+    #    times a day.
+    _assert_login_allowed()
+
     cl_fresh = _new_client()
     try:
         if SESSION_FILE.exists():
@@ -165,7 +219,21 @@ def get_authenticated_client() -> Client:
         pass
 
     code = cl_fresh.totp_generate_code(totp_seed) if totp_seed else ""
-    cl_fresh.login(username, password, verification_code=code)
+    _write_stamp(LOGIN_COOLDOWN_H)  # stamp BEFORE, so a crash still counts
+    try:
+        cl_fresh.login(username, password, verification_code=code)
+    except Exception as e:
+        # A checkpoint means Instagram already distrusts us. Retrying at the
+        # next run would just add another alert, so stand down for a while.
+        if "challenge" in str(e).lower() or "checkpoint" in str(e).lower():
+            _write_stamp(CHALLENGE_COOLDOWN_H)
+            log.warning(
+                "Instagram raised a challenge — backing off %dh. Open the "
+                "Instagram app and approve the login prompt.",
+                CHALLENGE_COOLDOWN_H,
+            )
+        raise
+
     if not _session_is_valid(cl_fresh):
         raise RuntimeError("Login succeeded but the new session did not verify.")
     _assert_right_account(cl_fresh)

@@ -5,6 +5,7 @@ config.*.json
 !config.example.json
 ig_session.json
 state.json
+.last_login
 
 # ── Logs ─────────────────────────────────────────────────────────────────────
 sync.log

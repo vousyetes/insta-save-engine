@@ -55,6 +55,10 @@ def save_state(ids: set):
 
 # ── Instagram session ─────────────────────────────────────────────────────────
 
+class SessionExpired(Exception):
+    """The Instagram session is no longer accepted (403 / login required)."""
+
+
 def make_session(cookies: dict) -> requests.Session:
     s = requests.Session()
     s.headers.update({
@@ -72,17 +76,58 @@ def make_session(cookies: dict) -> requests.Session:
         s.headers["X-CSRFToken"] = csrf
     return s
 
+# ── Transports ────────────────────────────────────────────────────────────────
+# Both return fetch(endpoint, params) -> parsed JSON dict, so the fetch helpers
+# below don't care which one they got.
+#
+# Why two: we log in with instagrapi, which is an Android app client. Replaying
+# those cookies through a desktop Chrome User-Agent — which is what this script
+# used to do — makes one session appear to be used from a phone and from a
+# desktop browser alternately. Instagram reads that as a stolen session: it
+# kills the session (403), the next run has to send a real password login, and
+# that login tends to draw a challenge. Symptom is a sync that works for a day
+# or two, then breaks, then works again. Going through the mobile API keeps a
+# single coherent device for both login and reads, which is what the session was
+# issued for. The web transport stays only as the fallback for the manual
+# config.json cookie, which is a real browser cookie anyway.
+
+def make_mobile_fetch(cl):
+    """Read through instagrapi's own signed mobile API (same device as login)."""
+    from instagrapi.exceptions import (
+        ClientForbiddenError, ClientLoginRequired, ClientUnauthorizedError,
+        LoginRequired,
+    )
+    refused = (LoginRequired, ClientLoginRequired,
+               ClientForbiddenError, ClientUnauthorizedError)
+
+    def fetch(endpoint: str, params: dict | None = None) -> dict:
+        try:
+            return cl.private_request(endpoint, params=params or {})
+        except refused as e:
+            raise SessionExpired(f"{type(e).__name__}: {e}") from e
+    return fetch
+
+
+def make_web_fetch(session: requests.Session):
+    """Read through the public web API using a browser cookie."""
+    def fetch(endpoint: str, params: dict | None = None) -> dict:
+        r = session.get(
+            f"https://www.instagram.com/api/v1/{endpoint}",
+            params=params or {},
+            timeout=15,
+        )
+        if r.status_code == 403:
+            raise SessionExpired("403 from the web API")
+        r.raise_for_status()
+        return r.json()
+    return fetch
+
 # ── Fetch collections ─────────────────────────────────────────────────────────
 
-def fetch_collections(session: requests.Session, target_collections: list) -> list:
+def fetch_collections(fetch, target_collections: list) -> list:
     """Return [{id, name}] for named collections matching target_collections (or all if empty)."""
-    r = session.get(
-        "https://www.instagram.com/api/v1/collections/list/",
-        params={"collection_types": '["MEDIA"]'},
-        timeout=15,
-    )
-    r.raise_for_status()
-    items = r.json().get("items", [])
+    data = fetch("collections/list/", {"collection_types": '["MEDIA"]'})
+    items = data.get("items", [])
     result = []
     for item in items:
         name = item.get("collection_name") or "All Posts"
@@ -93,26 +138,40 @@ def fetch_collections(session: requests.Session, target_collections: list) -> li
 
 # ── Fetch ALL saved posts (no collection filter) ──────────────────────────────
 
-def fetch_all_saved(session: requests.Session) -> list:
-    """Fetch every saved post regardless of collection using the main saved feed."""
-    posts, next_max_id = [], None
+def fetch_all_saved(fetch, known_ids: set | None = None) -> list:
+    """Fetch saved posts from the main saved feed, newest first.
+
+    The feed is ordered newest-first, so the first page that contains nothing
+    but already-synced posts means everything below it is older and already in
+    Notion. Stopping there turns a ~50-request crawl of the whole collection
+    into one or two requests on a normal day. That matters beyond speed: a full
+    crawl on every scheduled run is what pushes Instagram into 403ing the
+    session, which then forces a password login and fires a security alert each
+    time. Pass known_ids=None to force a full crawl (backfill/repair).
+    """
+    posts, next_max_id, page = [], None, 0
     while True:
         params = {}
         if next_max_id:
             params["max_id"] = next_max_id
-        r = session.get(
-            "https://www.instagram.com/api/v1/feed/saved/posts/",
-            params=params,
-            timeout=15,
-        )
-        if r.status_code == 403:
-            log.warning("403 on saved feed — cookies may have expired.")
+        try:
+            data = fetch("feed/saved/posts/", params)
+        except SessionExpired as e:
+            log.warning("Saved feed refused the session (%s) — stopping here.", e)
             break
-        r.raise_for_status()
-        data  = r.json()
         items = data.get("items", [])
-        for item in items:
-            posts.append(item.get("media", item))
+        page += 1
+        page_posts = [item.get("media", item) for item in items]
+        posts.extend(page_posts)
+
+        if known_ids is not None and page_posts and all(
+            str(p.get("id", "")) in known_ids for p in page_posts
+        ):
+            log.info(
+                "Page %d already fully synced — stopping early (%d posts scanned).",
+                page, len(posts),
+            )
+            break
         if not data.get("more_available") or not items:
             break
         next_max_id = data.get("next_max_id")
@@ -121,22 +180,17 @@ def fetch_all_saved(session: requests.Session) -> list:
 
 # ── Fetch posts in a named collection ─────────────────────────────────────────
 
-def fetch_posts(session: requests.Session, collection_id: str) -> list:
+def fetch_posts(fetch, collection_id: str) -> list:
     posts, next_max_id = [], None
     while True:
         params = {}
         if next_max_id:
             params["max_id"] = next_max_id
-        r = session.get(
-            f"https://www.instagram.com/api/v1/feed/collection/{collection_id}/posts/",
-            params=params,
-            timeout=15,
-        )
-        if r.status_code == 403:
-            log.warning("403 on collection %s — cookies may have expired.", collection_id)
+        try:
+            data = fetch(f"feed/collection/{collection_id}/posts/", params)
+        except SessionExpired as e:
+            log.warning("Collection %s refused the session (%s).", collection_id, e)
             break
-        r.raise_for_status()
-        data  = r.json()
         items = data.get("items", [])
         for item in items:
             posts.append(item.get("media", item))
@@ -245,28 +299,30 @@ def main():
     # (credentials in the macOS Keychain — see auth.py / setup_auth.py). If that
     # is not set up yet, fall back to the manual cookie in config.json so the
     # pipeline keeps working during the transition.
+    auth_error = None
     try:
-        from auth import get_ig_cookies
-        cookies = get_ig_cookies()
-        log.info("Auth via instagrapi (auto-refreshing session).")
+        from auth import get_authenticated_client
+        fetch = make_mobile_fetch(get_authenticated_client())
+        log.info("Auth via instagrapi (mobile API, auto-refreshing session).")
     except Exception as e:
+        auth_error = e
         log.warning("instagrapi auth unavailable (%s) — using config.json cookie.", e)
         cookies = cfg.get("instagram_cookies", {})
         if not cookies.get("sessionid"):
             log.error("No usable Instagram credentials. Run: .venv/bin/python setup_auth.py")
             sys.exit(1)
+        fetch = make_web_fetch(make_session(cookies))
 
     synced_ids = load_state()
-    session    = make_session(cookies)
 
     # Build a collection lookup: media_id → collection_name
     collection_map = {}
     try:
-        collections = fetch_collections(session, target_cols)
+        collections = fetch_collections(fetch, target_cols)
         log.info("Named collections: %s", [c["name"] for c in collections])
         for col in collections:
             try:
-                col_posts = fetch_posts(session, col["id"])
+                col_posts = fetch_posts(fetch, col["id"])
                 for media in col_posts:
                     mid = str(media.get("id", ""))
                     if mid:
@@ -276,13 +332,22 @@ def main():
     except Exception as e:
         log.warning("Could not fetch collections: %s", e)
 
-    # Fetch ALL saved posts via the main saved feed
-    log.info("Fetching all saved posts...")
+    # Fetch saved posts via the main saved feed. Normal runs stop as soon as
+    # they reach already-synced posts; `--full` re-crawls everything.
+    full_crawl = "--full" in sys.argv
+    log.info("Fetching saved posts%s...", " (full crawl)" if full_crawl else "")
     try:
-        all_posts = fetch_all_saved(session)
-        log.info("Total saved posts found: %d", len(all_posts))
+        all_posts = fetch_all_saved(fetch, None if full_crawl else synced_ids)
+        log.info("Saved posts scanned: %d", len(all_posts))
     except Exception as e:
+        # Don't let the fallback's failure hide the real cause. When instagrapi
+        # was blocked (cooldown / challenge), the stale config.json cookie is
+        # what actually errors here, and its redirect loop reads like a network
+        # glitch instead of "the login was refused".
         log.error("Failed to fetch saved posts: %s", e)
+        if auth_error is not None:
+            log.error("Real cause: instagrapi auth was unavailable — %s", auth_error)
+            log.error("The config.json fallback cookie is stale and cannot fetch.")
         sys.exit(1)
 
     new_count = 0
