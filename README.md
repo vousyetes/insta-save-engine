@@ -1,3 +1,8 @@
+> ⚠️ **Dépôt archivé, non maintenu.** Le code qui tourne réellement a divergé de celui-ci
+> (110 lignes d'écart dans `auth.py` au 03/08/2026) et vit maintenant dans un dépôt privé,
+> parce qu'il manipule des sessions Instagram authentifiées. Ce dépôt reste en ligne pour
+> son historique, mais ne t'en sers pas comme référence.
+
 # Insta Save Engine
 
 Transforme tes posts Instagram sauvegardés en une vraie base d'idées de contenu, rangée et exploitable, dans Notion. En local, sur ton Mac, gratuitement.
