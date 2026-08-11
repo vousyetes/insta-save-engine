@@ -295,18 +295,24 @@ def main():
 
     log.info("▶ Instagram → Notion sync starting")
 
-    # Cookies come from instagrapi, which logs in and re-logs in automatically
-    # (credentials in the macOS Keychain — see auth.py / setup_auth.py). If that
-    # is not set up yet, fall back to the manual cookie in config.json so the
-    # pipeline keeps working during the transition.
-    auth_error = None
-    try:
-        from auth import get_authenticated_client
-        fetch = make_mobile_fetch(get_authenticated_client())
-        log.info("Auth via instagrapi (mobile API, auto-refreshing session).")
-    except Exception as e:
-        auth_error = e
-        log.warning("instagrapi auth unavailable (%s) — using config.json cookie.", e)
+    # Prefer the managed mobile session. It has one stable Instagram device
+    # fingerprint, unlike the old browser-cookie route. Once it is configured,
+    # never retry config.json after an auth error: a stale web cookie adds
+    # requests while Instagram is already challenging the account. The manual
+    # cookie remains for first-time setups without Keychain credentials.
+    from auth import credentials_are_configured, get_authenticated_client
+    if credentials_are_configured():
+        try:
+            fetch = make_mobile_fetch(get_authenticated_client())
+            log.info("Auth via instagrapi (mobile API, auto-refreshing session).")
+        except Exception as e:
+            log.error(
+                "Managed Instagram auth unavailable (%s). Skipping this run; "
+                "the legacy config.json cookie will not be retried.", e,
+            )
+            sys.exit(1)
+    else:
+        log.info("Managed Instagram auth is not configured — using config.json cookie.")
         cookies = cfg.get("instagram_cookies", {})
         if not cookies.get("sessionid"):
             log.error("No usable Instagram credentials. Run: .venv/bin/python setup_auth.py")
@@ -340,14 +346,7 @@ def main():
         all_posts = fetch_all_saved(fetch, None if full_crawl else synced_ids)
         log.info("Saved posts scanned: %d", len(all_posts))
     except Exception as e:
-        # Don't let the fallback's failure hide the real cause. When instagrapi
-        # was blocked (cooldown / challenge), the stale config.json cookie is
-        # what actually errors here, and its redirect loop reads like a network
-        # glitch instead of "the login was refused".
         log.error("Failed to fetch saved posts: %s", e)
-        if auth_error is not None:
-            log.error("Real cause: instagrapi auth was unavailable — %s", auth_error)
-            log.error("The config.json fallback cookie is stale and cannot fetch.")
         sys.exit(1)
 
     new_count = 0

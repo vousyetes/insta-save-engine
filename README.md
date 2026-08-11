@@ -1,8 +1,3 @@
-> ⚠️ **Dépôt archivé, non maintenu.** Le code qui tourne réellement a divergé de celui-ci
-> (110 lignes d'écart dans `auth.py` au 03/08/2026) et vit maintenant dans un dépôt privé,
-> parce qu'il manipule des sessions Instagram authentifiées. Ce dépôt reste en ligne pour
-> son historique, mais ne t'en sers pas comme référence.
-
 # Insta Save Engine
 
 Transforme tes posts Instagram sauvegardés en une vraie base d'idées de contenu, rangée et exploitable, dans Notion. En local, sur ton Mac, gratuitement.
@@ -116,7 +111,13 @@ L'outil se connecte à ton compte avec ton identifiant et ton mot de passe, stoc
 .venv/bin/python setup_auth.py
 ```
 
-On te demande ton identifiant, ton mot de passe (masqué), et éventuellement le code 2FA. Si tu utilises une app d'authentification (TOTP), tu peux coller sa clé secrète pour que les reconnexions restent 100% automatiques. Au premier run, le Trousseau peut demander une autorisation : choisis **Toujours autoriser** pour que la tâche planifiée tourne sans te déranger.
+On te demande ton identifiant, ton mot de passe (masqué), et éventuellement le code 2FA. Si tu utilises une app d'authentification (TOTP), colle sa clé secrète pour que les reconnexions restent automatiques. Au premier run, le Trousseau peut demander une autorisation : choisis **Toujours autoriser** pour que la tâche planifiée tourne sans te déranger.
+
+Tu avais déjà configuré l'outil sans TOTP ? Active d'abord l'application d'authentification dans Instagram, choisis l'option de configuration manuelle, puis stocke la clé sans relancer de connexion :
+
+```bash
+.venv/bin/python set_totp.py
+```
 
 > Note : Instagram n'aime pas les connexions à répétition. L'outil est fait pour se connecter le moins possible (il réutilise sa session au lieu de se relogger à chaque fois). Ne relance pas `setup_auth.py` en boucle « pour tester », une fois suffit.
 
@@ -242,10 +243,10 @@ Le champ `whisper_model_path` dans `config.json` pointe vers ton modèle whisper
 Le plus souvent c'est un contrôle temporaire d'Instagram, pas une vraie panne. Attends quelques heures et relance `sync.py` : dans la majorité des cas, ça repasse tout seul. Si Instagram t'envoie une alerte « c'était toi ? » dans l'app, confirme que oui (depuis ton wifi habituel), ça débloque la situation plus vite. Ne relance pas le sync dix fois d'affilée, chaque tentative de connexion nourrit la suspicion.
 
 **« Login cooldown active » dans le log.**
-Ce n'est pas une panne, c'est le garde-fou. Après une vraie connexion par mot de passe, l'outil s'interdit d'en renvoyer une pendant quelques heures (20 h si Instagram a présenté un challenge), parce que chaque connexion déclenche une alerte de sécurité et pousse le compte vers un checkpoint. Le message te dit quand ça se lève, et le run suivant repart tout seul. **Ne supprime pas `.last_login` pour forcer** : c'est exactement l'enchaînement de connexions qui fait bloquer un compte.
+Ce n'est pas une panne, c'est le garde-fou. Après une vraie connexion par mot de passe, l'outil s'interdit d'en renvoyer une pendant 20 h, parce que chaque connexion déclenche une alerte de sécurité et pousse le compte vers un checkpoint. Le message te dit quand ça se lève, et le run suivant repart tout seul. **Ne supprime pas `.last_login` pour forcer** : c'est exactement l'enchaînement de connexions qui fait bloquer un compte.
 
 **« Instagram raised a challenge ».**
-Instagram veut que tu approuves la connexion depuis l'app Instagram sur ton téléphone. Personne ne peut le faire à ta place. Approuve, et le run suivant repassera.
+Instagram veut que tu approuves la connexion depuis l'app Instagram sur ton téléphone. Personne ne peut le faire à ta place. Approuve-la, attends le cooldown, et laisse le run suivant repartir seul. Le moteur ne retente pas un vieux cookie navigateur après cet échec et coupe un login bloqué après deux minutes.
 
 **« Ollama non disponible » pendant l'extraction.**
 Le serveur Ollama ne tourne pas. Ouvre l'app Ollama, ou lance `ollama serve` dans un terminal, puis relance `extract.py`. En attendant, `sync.py` et `ideate.py` marchent très bien sans lui.
@@ -269,8 +270,8 @@ Vérifie que `setup_auth.py` est bien passé (connexion OK) et que tu as des pos
 Le pipeline est volontairement découpé en scripts indépendants, pour que chaque étape soit relançable seule et que rien ne casse tout le reste en cas de souci.
 
 - **`sync.py`** : va chercher tes saves via l'API privée d'Instagram, récupère la miniature (elle devient la cover de la page Notion) et écrit chaque post dans la base `Instagram Saves` avec le statut `New`. Il déduplique via `state.json`, donc tu peux le relancer sans créer de doublons.
-- **`auth.py` / `setup_auth.py`** : la connexion Instagram. Le choix ici est « stable et discret ». On stocke les identifiants dans le Trousseau, on garde une session sur disque, et surtout on évite de se reconnecter à chaque run (c'est ce qui déclenche les alertes « intrus » d'Instagram). La sonde de session utilise un endpoint doux, pas le fil principal qui est sur-surveillé. Un disjoncteur (`.last_login`) refuse d'enchaîner deux connexions par mot de passe rapprochées, même si la session est morte.
-- **Un seul appareil, du login à la lecture.** `sync.py` lit via l'API mobile signée d'instagrapi, celle-là même qui a créé la session. C'est important : rejouer les cookies d'une session mobile derrière un User-Agent de navigateur fait croire à Instagram qu'un même compte est utilisé depuis un téléphone et depuis un ordinateur en alternance, donc qu'on lui a volé sa session. Il tue la session, le run suivant doit se reconnecter, et cette connexion attire un challenge. Symptôme : un sync qui marche un jour ou deux, casse, puis remarche. Le chemin navigateur ne sert plus que de secours pour le cookie manuel de `config.json`, qui est un vrai cookie de navigateur.
+- **`auth.py` / `setup_auth.py` / `set_totp.py`** : la connexion Instagram. Le choix ici est « stable et discret ». On stocke les identifiants et la graine TOTP dans le Trousseau, on garde une session sur disque, et surtout on évite de se reconnecter à chaque run. La sonde de session utilise un endpoint doux, pas le fil principal qui est sur-surveillé. Un disjoncteur (`.last_login`) impose 20 h entre deux connexions par mot de passe, même si la session est morte ; tout login bloqué est coupé après deux minutes.
+- **Un seul appareil, du login à la lecture.** `sync.py` lit via l'API mobile signée d'instagrapi, celle-là même qui a créé la session. C'est important : rejouer les cookies d'une session mobile derrière un User-Agent de navigateur fait croire à Instagram qu'un même compte est utilisé depuis un téléphone et depuis un ordinateur en alternance, donc qu'on lui a volé sa session. Il tue la session, le run suivant doit se reconnecter, et cette connexion attire un challenge. Symptôme : un sync qui marche un jour ou deux, casse, puis remarche. Le cookie navigateur n’est admis qu’avant la première configuration du Trousseau ; il ne sert jamais de repli après un échec de l’authentification gérée.
 - **`discover_categories.py`** : au premier passage, lit un échantillon de tes saves et demande au modèle local de dessiner un jeu de catégories qui colle à TON contenu (nom, description, pilier). Écrit dans `config.json`. C'est ce qui rend l'outil universel au lieu d'être coincé sur une seule niche.
 - **`ideate.py`** : le classement. Quand tes catégories existent et qu'Ollama tourne, l'IA locale range chaque post dans la bonne (elle lit la caption, pas juste des mots-clés). Sinon, filet de secours par règles (mots-clés) avec un jeu générique. Chaque save `New` devient une idée dans `Content Ideas`, taguée par catégorie et rangée dans un pilier.
 - **`enrich.py`** : la lecture du média. Quand la valeur est dans l'image ou la vidéo, on télécharge le média et on le fait lire par les modèles locaux. La résolution vision est montée à 1536px parce qu'en dessous, le petit texte se coupe et le modèle se met à inventer des noms.

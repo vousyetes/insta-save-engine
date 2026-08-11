@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import signal
 import time
 from pathlib import Path
 
@@ -44,7 +45,7 @@ KEYRING_SERVICE = "insta-save-engine"
 # These two cooldowns are the circuit breaker: after a real login we refuse to
 # send another one for a while, and a challenge means Instagram is already
 # unhappy, so we back off instead of hammering it at the next run.
-LOGIN_COOLDOWN_H = 6
+LOGIN_COOLDOWN_H = 20
 
 # Deliberately 20h and not 24h. The sync usually runs on a fixed daily
 # schedule, so a 24h backoff started by run N is still ticking (by seconds to
@@ -52,6 +53,11 @@ LOGIN_COOLDOWN_H = 6
 # time. Anything under ~23h leaves the intended guarantee intact — at most one
 # password login per day — while letting the next scheduled run actually retry.
 CHALLENGE_COOLDOWN_H = 20
+
+# A request inside instagrapi can get stuck in a server-side retry/challenge
+# exchange. A process-level deadline prevents one scheduled run from blocking
+# every later one. This project is macOS-only, where SIGALRM is available.
+LOGIN_TIMEOUT_S = 120
 
 # Optional safety net: lock the sync to one Instagram account by numeric user_id.
 # Leave "instagram_expected_user_id" empty in config.json to disable the check
@@ -118,6 +124,39 @@ def _load_credentials():
         )
     totp_seed = keyring.get_password(KEYRING_SERVICE, f"totp:{username}")
     return username, password, totp_seed
+
+
+def credentials_are_configured() -> bool:
+    """Whether managed Keychain authentication is available.
+
+    `sync.py` uses this to decide whether the legacy browser-cookie setup is
+    appropriate. Once managed auth exists, retrying a stale web cookie after a
+    mobile-auth failure adds requests while Instagram is already suspicious.
+    """
+    username = keyring.get_password(KEYRING_SERVICE, "username")
+    return bool(username and keyring.get_password(KEYRING_SERVICE, username))
+
+
+class LoginTimeout(RuntimeError):
+    """A password login did not finish within LOGIN_TIMEOUT_S."""
+
+
+def _login_with_timeout(cl: Client, username: str, password: str, code: str) -> None:
+    """Perform one password login with a hard process-level deadline."""
+    def on_timeout(_signum, _frame):
+        raise LoginTimeout(
+            f"Instagram login exceeded {LOGIN_TIMEOUT_S}s; stopped safely."
+        )
+
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    signal.signal(signal.SIGALRM, on_timeout)
+    previous_timer = signal.setitimer(signal.ITIMER_REAL, LOGIN_TIMEOUT_S)
+    try:
+        cl.login(username, password, verification_code=code)
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
+        signal.setitimer(signal.ITIMER_REAL, *previous_timer)
 
 
 # ── Client helpers ────────────────────────────────────────────────────────────
@@ -221,15 +260,19 @@ def get_authenticated_client() -> Client:
     code = cl_fresh.totp_generate_code(totp_seed) if totp_seed else ""
     _write_stamp(LOGIN_COOLDOWN_H)  # stamp BEFORE, so a crash still counts
     try:
-        cl_fresh.login(username, password, verification_code=code)
+        _login_with_timeout(cl_fresh, username, password, code)
     except Exception as e:
         # A checkpoint means Instagram already distrusts us. Retrying at the
         # next run would just add another alert, so stand down for a while.
-        if "challenge" in str(e).lower() or "checkpoint" in str(e).lower():
+        if (
+            isinstance(e, LoginTimeout)
+            or "challenge" in str(e).lower()
+            or "checkpoint" in str(e).lower()
+        ):
             _write_stamp(CHALLENGE_COOLDOWN_H)
             log.warning(
-                "Instagram raised a challenge — backing off %dh. Open the "
-                "Instagram app and approve the login prompt.",
+                "Instagram login was blocked or timed out — backing off %dh. "
+                "Open the Instagram app and approve any prompt before retrying.",
                 CHALLENGE_COOLDOWN_H,
             )
         raise

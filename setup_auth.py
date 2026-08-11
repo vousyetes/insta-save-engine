@@ -25,7 +25,12 @@ import keyring
 from instagrapi import Client
 from instagrapi.exceptions import TwoFactorRequired
 
-from auth import KEYRING_SERVICE, SESSION_FILE, EXPECTED_USER_ID
+from auth import (
+    EXPECTED_USER_ID,
+    KEYRING_SERVICE,
+    SESSION_FILE,
+    _login_with_timeout,
+)
 
 
 def main() -> int:
@@ -53,10 +58,10 @@ def main() -> int:
 
     try:
         code = cl.totp_generate_code(totp_seed) if totp_seed else ""
-        cl.login(username, password, verification_code=code)
+        _login_with_timeout(cl, username, password, code)
     except TwoFactorRequired:
         sms_code = input("Two-factor code (from SMS or app): ").strip()
-        cl.login(username, password, verification_code=sms_code)
+        _login_with_timeout(cl, username, password, sms_code)
     except Exception as e:
         print(f"\n✗ Login failed: {e}")
         return 1
