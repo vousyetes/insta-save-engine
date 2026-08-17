@@ -55,7 +55,6 @@ Récupère le projet et lance le script d'install. Il crée l'environnement Pyth
 ```bash
 git clone https://github.com/vousyetes/insta-save-engine.git
 cd insta-save-engine
-chmod +x install.sh
 ./install.sh
 ```
 
@@ -226,6 +225,10 @@ Le champ `whisper_model_path` dans `config.json` pointe vers ton modèle whisper
   "instagram_collections": [],                  // [] = toutes tes collections ; sinon ["AI", "Inspiration"]
   "categories": [],                              // rempli au 1er run par l'IA (catégories taillées pour toi)
   "instagram_expected_user_id": "",             // laisse vide (garde-fou multi-comptes, optionnel)
+  "login_country": "",                           // optionnel, ex "FR" (voir plus bas)
+  "login_country_code": "",                      // optionnel, ex 33
+  "login_locale": "",                            // optionnel, ex "fr_FR"
+  "login_tz_offset": "",                         // optionnel, décalage en secondes, ex 3600
   "whisper_model_path": "",                      // rempli par install.sh
   "vision_model": "qwen2.5vl:7b",
   "text_model": "gpt-oss:20b",
@@ -234,6 +237,8 @@ Le champ `whisper_model_path` dans `config.json` pointe vers ton modèle whisper
 ```
 
 `instagram_cookies` sert seulement de secours si `setup_auth.py` n'est pas encore passé. En temps normal, tu le laisses vide, la connexion se fait toute seule via le Trousseau.
+
+Les quatre champs `login_*` sont optionnels et vides par défaut. Instagram fait moins de contrôles quand la région déclarée à la connexion correspond à celle du compte. Si tu te fais embêter par des demandes de vérification, renseigne ton pays. Pour la France : `"login_country": "FR"`, `"login_country_code": 33`, `"login_locale": "fr_FR"`, `"login_tz_offset": 3600` (mets 7200 en heure d'été).
 
 ---
 
