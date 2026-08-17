@@ -46,7 +46,7 @@ WHISPER_BIN  = cfg.get("whisper_bin", "whisper-cli")
 WHISPER_MODEL = str(cfg.get("whisper_model_path", "") or "")
 
 # Guard rails (machine load)
-MAX_SLIDES  = 10    # carousel slides to OCR
+MAX_SLIDES  = 20    # carousel slides to OCR (Instagram's max per post)
 MAX_FRAMES  = 8     # video frames to OCR (on-screen text of a reel changes)
 IMG_MAXDIM  = 1536  # vision resolution: 768 cut small text AND made qwen2.5vl
                     # hallucinate (invented names). 1536 recovers dense prompts/
@@ -291,7 +291,7 @@ def enrich_media(media_id: str, session: requests.Session = None) -> str:
                 # 1) spoken audio
                 tr = transcribe(vid, workdir)
                 if tr and len(tr) > 15:
-                    parts.append(f"[Audio transcript]\n{tr[:2500]}")
+                    parts.append(f"[Audio transcript]\n{tr[:6000]}")
                 # 2) on-screen text (frames) — deduplicated, text only
                 frames = sample_frames(vid, workdir)
                 seen, frame_txt = set(), []
@@ -307,7 +307,7 @@ def enrich_media(media_id: str, session: requests.Session = None) -> str:
                     frame_txt.append(t)
                 if frame_txt:
                     joined = "\n".join(frame_txt)
-                    parts.append(f"[On-screen text]\n{joined[:1200]}")
+                    parts.append(f"[On-screen text]\n{joined[:5000]}")
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 

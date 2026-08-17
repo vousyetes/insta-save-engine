@@ -254,6 +254,22 @@ def parse_post(media: dict, collection_name: str) -> dict:
 
 # ── Notion writer ─────────────────────────────────────────────────────────────
 
+def clip_2000(s: str) -> str:
+    """Clip to Notion's 2000-char rich_text limit, counted in UTF-16 units.
+    Notion measures UTF-16 code units, so an emoji outside the BMP counts as 2,
+    not 1. A naive character slice can still overflow the limit and get a 400."""
+    if len(s.encode("utf-16-le")) // 2 <= 2000:
+        return s
+    out, n = [], 0
+    for ch in s:
+        w = len(ch.encode("utf-16-le")) // 2
+        if n + w > 1997:
+            break
+        out.append(ch)
+        n += w
+    return "".join(out) + "..."
+
+
 def notion_headers(token: str) -> dict:
     return {
         "Authorization": f"Bearer {token}",
@@ -272,7 +288,7 @@ def create_notion_page(token: str, db_id: str, post: dict) -> bool:
             "Status":     {"select":    {"name": "New"}},
             "Media ID":   {"rich_text": [{"text": {"content": post["media_id"]}}]},
             "Saved":      {"date":      {"start": post["saved_at"]}},
-            "Caption":    {"rich_text": [{"text": {"content": (post["caption"][:1997] + "...") if len(post["caption"]) > 2000 else post["caption"]}}]},
+            "Caption":    {"rich_text": [{"text": {"content": clip_2000(post["caption"])}}]},
             "Collection": {"select":    {"name": post["collection"]}},
         },
     }

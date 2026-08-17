@@ -74,6 +74,33 @@ def _expected_user_id() -> str:
 EXPECTED_USER_ID = _expected_user_id()
 
 
+def _apply_login_region(cl: Client) -> None:
+    """Optionally pin the login's country / locale / timezone from config.
+
+    Instagram trusts a login more when the device's region matches the account's
+    real country, which cuts down on challenges. It's OFF by default (empty
+    config → instagrapi's own defaults) so the tool stays correct worldwide; set
+    these in config.json only for YOUR country. Example (France):
+        "login_country": "FR", "login_country_code": 33,
+        "login_locale": "fr_FR", "login_tz_offset": 3600
+    """
+    try:
+        cfg = json.loads(CONFIG_FILE.read_text())
+    except Exception:
+        return
+    try:
+        if cfg.get("login_country"):
+            cl.set_country(cfg["login_country"])
+        if cfg.get("login_country_code"):
+            cl.set_country_code(int(cfg["login_country_code"]))
+        if cfg.get("login_locale"):
+            cl.set_locale(cfg["login_locale"])
+        if cfg.get("login_tz_offset") is not None and cfg.get("login_tz_offset") != "":
+            cl.set_timezone_offset(int(cfg["login_tz_offset"]))
+    except Exception as e:
+        log.warning("Could not set login region (%s) — continuing.", e)
+
+
 # ── Login circuit breaker ─────────────────────────────────────────────────────
 
 def _read_stamp() -> tuple[float, float]:
@@ -257,6 +284,7 @@ def get_authenticated_client() -> Client:
     except Exception:
         pass
 
+    _apply_login_region(cl_fresh)
     code = cl_fresh.totp_generate_code(totp_seed) if totp_seed else ""
     _write_stamp(LOGIN_COOLDOWN_H)  # stamp BEFORE, so a crash still counts
     try:
