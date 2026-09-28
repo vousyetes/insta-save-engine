@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Instagram Saved Posts → Notion sync daemon.
-Runs twice a day via launchd. Uses browser session cookies — no password stored.
+Runs twice a day via launchd. Uses browser session cookies : no password stored.
 """
 
 import json
@@ -81,8 +81,8 @@ def make_session(cookies: dict) -> requests.Session:
 # below don't care which one they got.
 #
 # Why two: we log in with instagrapi, which is an Android app client. Replaying
-# those cookies through a desktop Chrome User-Agent — which is what this script
-# used to do — makes one session appear to be used from a phone and from a
+# those cookies through a desktop Chrome User-Agent : which is what this script
+# used to do : makes one session appear to be used from a phone and from a
 # desktop browser alternately. Instagram reads that as a stolen session: it
 # kills the session (403), the next run has to send a real password login, and
 # that login tends to draw a challenge. Symptom is a sync that works for a day
@@ -157,7 +157,7 @@ def fetch_all_saved(fetch, known_ids: set | None = None) -> list:
         try:
             data = fetch("feed/saved/posts/", params)
         except SessionExpired as e:
-            log.warning("Saved feed refused the session (%s) — stopping here.", e)
+            log.warning("Saved feed refused the session (%s) : stopping here.", e)
             break
         items = data.get("items", [])
         page += 1
@@ -168,7 +168,7 @@ def fetch_all_saved(fetch, known_ids: set | None = None) -> list:
             str(p.get("id", "")) in known_ids for p in page_posts
         ):
             log.info(
-                "Page %d already fully synced — stopping early (%d posts scanned).",
+                "Page %d already fully synced : stopping early (%d posts scanned).",
                 page, len(posts),
             )
             break
@@ -249,7 +249,7 @@ def parse_post(media: dict, collection_name: str) -> dict:
         "collection":   collection_name,
         "saved_at":     saved_at[:10],   # date only
         "thumbnail_url": thumbnail_url or "",
-        "name":         f"@{author} — {caption[:80]}{'…' if len(caption) > 80 else ''}",
+        "name":         f"@{author} : {caption[:80]}{'…' if len(caption) > 80 else ''}",
     }
 
 # ── Notion writer ─────────────────────────────────────────────────────────────
@@ -276,6 +276,37 @@ def notion_headers(token: str) -> dict:
         "Notion-Version": NOTION_VER,
         "Content-Type": "application/json",
     }
+
+
+def fetch_notion_identities(token: str, db_id: str) -> dict:
+    """Return the URLs and media IDs already stored in the saves database."""
+    identities = {"urls": set(), "media_ids": set()}
+    cursor = None
+    while True:
+        body = {"page_size": 100}
+        if cursor:
+            body["start_cursor"] = cursor
+        response = requests.post(
+            f"{NOTION_API}/databases/{db_id}/query",
+            headers=notion_headers(token), json=body, timeout=20,
+        )
+        response.raise_for_status()
+        data = response.json()
+        for page in data.get("results", []):
+            properties = page.get("properties", {})
+            url = properties.get("URL", {}).get("url") or ""
+            if url:
+                identities["urls"].add(url)
+            media_id = "".join(
+                item.get("plain_text") or item.get("text", {}).get("content", "")
+                for item in properties.get("Media ID", {}).get("rich_text", [])
+            )
+            if media_id:
+                identities["media_ids"].add(media_id)
+        if not data.get("has_more"):
+            return identities
+        cursor = data.get("next_cursor")
+        time.sleep(0.2)
 
 def create_notion_page(token: str, db_id: str, post: dict) -> bool:
     payload = {
@@ -328,7 +359,7 @@ def main():
             )
             sys.exit(1)
     else:
-        log.info("Managed Instagram auth is not configured — using config.json cookie.")
+        log.info("Managed Instagram auth is not configured : using config.json cookie.")
         cookies = cfg.get("instagram_cookies", {})
         if not cookies.get("sessionid"):
             log.error("No usable Instagram credentials. Run: .venv/bin/python setup_auth.py")

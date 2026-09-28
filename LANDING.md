@@ -1,4 +1,4 @@
-# Insta Save Engine — copie landing (page vousyetes)
+# Insta Save Engine : copie landing (page vousyetes)
 
 > À coller sur la page produit. Français, voix vousyetes. Le bouton pointe vers le repo GitHub.
 
@@ -23,7 +23,7 @@ J'avais le même problème. Alors j'ai construit un truc pour le régler.
 
 Insta Save Engine va chercher tous tes posts sauvegardés, les classe tout seul, et lit même ce qu'il y a DANS les images et les vidéos. Le texte des slides. L'audio parlé du reel. Pas juste la légende.
 
-Tes saves deviennent une base cherchable dans Notion. Le prompt copiable est là. Le lien de l'outil aussi. Rangé, taggé, prêt à servir.
+Tes saves deviennent une base cherchable dans Notion. Le prompt copiable est là. Le lien de l'outil aussi. Rangé, taggé, prêt à servir. Tu peux même lui envoyer un post depuis l'iPhone sans rouvrir de session Instagram.
 
 Tout tourne sur ton Mac, en local. Rien ne part ailleurs. Et ça coûte zéro à faire tourner.
 
@@ -34,10 +34,12 @@ Créateur faceless, indie hacker, ou juste un curieux qui sauvegarde par réflex
 
 ## Ce que tu récupères
 
-- Tes saves classés en 8 catégories, automatiquement.
+- Des catégories adaptées à ce que tu sauvegardes, générées automatiquement.
 - Le contenu utile extrait, pas juste la légende : le prompt, le lien, les étapes du workflow.
 - Les reels et carrousels lus par une IA locale quand la légende ne dit rien.
 - Deux bases Notion prêtes à l'emploi, qui se remplissent toutes seules.
+- Les thèmes qui reviennent dans ton fourre-tout, déduits localement sans toucher à Notion.
+- Un index HTML autonome et une recherche hors ligne, sans réseau ni IA.
 
 ## Comment tu démarres
 

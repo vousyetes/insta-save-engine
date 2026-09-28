@@ -5,10 +5,10 @@ Search your Content Ideas in Notion, straight from Claude Code.
 ## Usage
 
 ```
-/ideas                 — summary: how many ideas per category
-/ideas REPO            — all saved repos
-/ideas PROMPT claude   — prompts mentioning "claude"
-/ideas OUTIL           — all tools
+/ideas                 : summary: how many ideas per category
+/ideas REPO            : all saved repos
+/ideas PROMPT claude   : prompts mentioning "claude"
+/ideas OUTIL           : all tools
 ```
 
 Categories: PROMPT, REPO, OUTIL, WORKFLOW, ASTUCE, TUTO, VIDÉO IDEA, INSPIRATION.

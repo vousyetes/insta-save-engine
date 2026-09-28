@@ -13,7 +13,7 @@ It returns an enriched text bundle (caption + slide OCR + transcript + frames)
 which is then fed to the text model for category extraction.
 
 Media is fetched from Instagram's private API (media/{id}/info/) with the session
-cookies — same mechanism as sync.py.
+cookies : same mechanism as sync.py.
 
 Config knobs (config.json, all optional):
   "whisper_model_path" : path to a whisper.cpp ggml model. Empty / missing file
@@ -292,7 +292,7 @@ def enrich_media(media_id: str, session: requests.Session = None) -> str:
                 tr = transcribe(vid, workdir)
                 if tr and len(tr) > 15:
                     parts.append(f"[Audio transcript]\n{tr[:6000]}")
-                # 2) on-screen text (frames) — deduplicated, text only
+                # 2) on-screen text (frames) : deduplicated, text only
                 frames = sample_frames(vid, workdir)
                 seen, frame_txt = set(), []
                 for fr in frames:
@@ -350,7 +350,7 @@ if __name__ == "__main__":
     smap = build_saves_map(cfg["notion_token"], cfg["instagram_saves_db_id"])
     print(f"Saves map: {len(smap)} posts")
     if not whisper_available():
-        print("(whisper not configured — reels will be OCR-only, no audio transcript)")
+        print("(whisper not configured : reels will be OCR-only, no audio transcript)")
     if not sc:
         # grab one carousel and one reel at random for a test
         car = next((k for k, v in smap.items() if v["type"] == "Carousel" and v["media_id"]), None)
@@ -359,7 +359,7 @@ if __name__ == "__main__":
         for label, code in [("CAROUSEL", car), ("REEL", reel)]:
             if not code:
                 continue
-            print(f"\n{'='*60}\n{label} — {code}\n{'='*60}")
+            print(f"\n{'='*60}\n{label} : {code}\n{'='*60}")
             out = enrich_media(smap[code]["media_id"])
             print(out[:1500] if out else "(nothing extracted)")
     else:

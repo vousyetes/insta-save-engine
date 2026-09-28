@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-discover_categories.py — build a category scheme that fits YOUR saves.
+discover_categories.py : build a category scheme that fits YOUR saves.
 
 The old pipeline shipped a fixed set of categories tuned for AI content
 (PROMPT, REPO, OUTIL...). That only makes sense if you save AI posts. This
@@ -154,7 +154,7 @@ def generate_categories(captions: list) -> list:
             if len(cats) >= 4:
                 return cats[:10]
         except requests.exceptions.ConnectionError:
-            print("  ⚠ Ollama unreachable — run 'ollama serve' first.")
+            print("  ⚠ Ollama unreachable : run 'ollama serve' first.")
             return []
         except Exception as e:
             if attempt < 2:
@@ -181,14 +181,14 @@ def ensure_categories(force: bool = False) -> list:
     print("Discovering categories from your saves (first pass)…")
     caps = sample_captions()
     if len(caps) < 8:
-        print(f"  Only {len(caps)} captions found — run sync.py first. Skipping.")
+        print(f"  Only {len(caps)} captions found : run sync.py first. Skipping.")
         return existing
     cats = generate_categories(caps)
     if cats:
         save_categories(cats)
         print(f"  ✓ {len(cats)} categories generated and saved to config.json:")
         for c in cats:
-            print(f"     [{c['name']}] ({c['pillar']}) — {c['description'][:60]}")
+            print(f"     [{c['name']}] ({c['pillar']}) : {c['description'][:60]}")
     return cats or existing
 
 
@@ -200,11 +200,11 @@ def main():
             print("No categories set yet. Run sync.py then ideate.py (or this script).")
             return
         for c in cats:
-            print(f"[{c['name']}] ({c.get('pillar','?')}) — {c.get('description','')}")
+            print(f"[{c['name']}] ({c.get('pillar','?')}) : {c.get('description','')}")
         return
     force = "--force" in args
     if not ollama_up():
-        print("Ollama is not running. Start it (ollama serve) — category discovery "
+        print("Ollama is not running. Start it (ollama serve) : category discovery "
               "needs the local model. In light mode, ideate.py uses a generic scheme instead.")
         return
     ensure_categories(force=force)

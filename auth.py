@@ -1,9 +1,9 @@
 """
-auth.py — Authenticated Instagram client via instagrapi.
+auth.py : Authenticated Instagram client via instagrapi.
 
 Why this exists: the web `sessionid` cookie expires every few weeks, which used
 to break the pipeline silently. instagrapi logs in once, persists the session to
-ig_session.json, and re-logs in automatically when the session dies — so the
+ig_session.json, and re-logs in automatically when the session dies : so the
 sync is "set and forget".
 
 Security:
@@ -15,7 +15,7 @@ Security:
 It exposes get_ig_cookies(), which returns a cookie dict
 ({sessionid, csrftoken, ds_user_id, ...}) that the existing requests-based fetch
 code in sync.py already knows how to use. So instagrapi only replaces the
-"where do fresh cookies come from" part — nothing else in the pipeline changes.
+"where do fresh cookies come from" part : nothing else in the pipeline changes.
 """
 from __future__ import annotations
 
@@ -49,9 +49,9 @@ LOGIN_COOLDOWN_H = 20
 
 # Deliberately 20h and not 24h. The sync usually runs on a fixed daily
 # schedule, so a 24h backoff started by run N is still ticking (by seconds to
-# minutes) when run N+1 fires — the backoff silently eats a second day, every
-# time. Anything under ~23h leaves the intended guarantee intact — at most one
-# password login per day — while letting the next scheduled run actually retry.
+# minutes) when run N+1 fires : the backoff silently eats a second day, every
+# time. Anything under ~23h leaves the intended guarantee intact : at most one
+# password login per day : while letting the next scheduled run actually retry.
 CHALLENGE_COOLDOWN_H = 20
 
 # A request inside instagrapi can get stuck in a server-side retry/challenge
@@ -61,7 +61,7 @@ LOGIN_TIMEOUT_S = 120
 
 # Optional safety net: lock the sync to one Instagram account by numeric user_id.
 # Leave "instagram_expected_user_id" empty in config.json to disable the check
-# (the normal case — you only log in with one account). Set it if you keep
+# (the normal case : you only log in with one account). Set it if you keep
 # several accounts logged in and want to be 100% sure the engine never syncs
 # the wrong one.
 def _expected_user_id() -> str:
@@ -98,7 +98,7 @@ def _apply_login_region(cl: Client) -> None:
         if cfg.get("login_tz_offset") is not None and cfg.get("login_tz_offset") != "":
             cl.set_timezone_offset(int(cfg["login_tz_offset"]))
     except Exception as e:
-        log.warning("Could not set login region (%s) — continuing.", e)
+        log.warning("Could not set login region (%s) : continuing.", e)
 
 
 # ── Login circuit breaker ─────────────────────────────────────────────────────
@@ -222,10 +222,10 @@ def _session_is_valid(cl: Client) -> bool:
             return False
         except Exception as e:
             if attempt == 0:
-                log.info("Session probe hiccup (%s) — retrying once.", e)
+                log.info("Session probe hiccup (%s) : retrying once.", e)
                 time.sleep(3)
                 continue
-            log.warning("Session probe failed twice (%s) — treating as expired.", e)
+            log.warning("Session probe failed twice (%s) : treating as expired.", e)
             return False
     return False
 
@@ -249,7 +249,7 @@ def get_authenticated_client() -> Client:
     username, password, totp_seed = _load_credentials()
     cl = _new_client()
 
-    # 1) Try to reuse the persisted session — no real login, no risk.
+    # 1) Try to reuse the persisted session : no real login, no risk.
     #    Crucially we do NOT call cl.login(username, password) here. Sending a
     #    password login on every run is exactly what makes Instagram suspect an
     #    intruder and invalidate the session, which then forces another login
@@ -263,11 +263,11 @@ def get_authenticated_client() -> Client:
                 _dump_session(cl)
                 log.info("Instagram session reused (no login).")
                 return cl
-            log.info("Stored session no longer valid — re-logging in.")
+            log.info("Stored session no longer valid : re-logging in.")
         except LoginRequired:
-            log.info("Stored session no longer authorized — re-logging in.")
+            log.info("Stored session no longer authorized : re-logging in.")
         except Exception as e:
-            log.warning("Could not reuse stored session (%s) — re-logging in.", e)
+            log.warning("Could not reuse stored session (%s) : re-logging in.", e)
 
     # 2) Fresh login, reusing the device UUIDs from the old session if we have
     #    them (a stable device fingerprint lowers Instagram's suspicion).
@@ -299,7 +299,7 @@ def get_authenticated_client() -> Client:
         ):
             _write_stamp(CHALLENGE_COOLDOWN_H)
             log.warning(
-                "Instagram login was blocked or timed out — backing off %dh. "
+                "Instagram login was blocked or timed out : backing off %dh. "
                 "Open the Instagram app and approve any prompt before retrying.",
                 CHALLENGE_COOLDOWN_H,
             )

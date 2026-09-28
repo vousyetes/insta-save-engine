@@ -1,5 +1,5 @@
 """
-setup_auth.py — ONE-TIME interactive setup for the Instagram login.
+setup_auth.py : ONE-TIME interactive setup for the Instagram login.
 
 Run it once, in a terminal:
 
@@ -9,7 +9,7 @@ Run it once, in a terminal:
 It asks for your Instagram username/password (password is hidden), handles 2FA,
 stores the credentials in the macOS Keychain (never in a file), establishes the
 session, and saves it to ig_session.json. After this, sync.py logs in and
-re-logs in by itself — you never have to touch a cookie again.
+re-logs in by itself : you never have to touch a cookie again.
 
 The password is typed straight into the Keychain; it is never printed, logged,
 or written to disk in plain text.
@@ -34,7 +34,7 @@ from auth import (
 
 
 def main() -> int:
-    print("── Insta Save Engine — Instagram auth setup ────────────────────────")
+    print("── Insta Save Engine : Instagram auth setup ────────────────────────")
     if EXPECTED_USER_ID:
         print(f"Expected account user_id: {EXPECTED_USER_ID}")
     print()
@@ -70,7 +70,7 @@ def main() -> int:
     if EXPECTED_USER_ID and uid != EXPECTED_USER_ID:
         print(f"\n⚠  Logged into account user_id={uid}, expected {EXPECTED_USER_ID}.")
         if input("   Store this account anyway? [y/N] ").strip().lower() != "y":
-            print("Aborted — nothing stored.")
+            print("Aborted : nothing stored.")
             return 1
 
     # Persist credentials (Keychain) and the session (file).
@@ -89,7 +89,7 @@ def main() -> int:
         f"'{KEYRING_SERVICE}'),\n  session saved to {SESSION_FILE.name}, "
         f"logged in as user_id={uid}.\n"
         "  sync.py will now authenticate and re-login on its own.\n\n"
-        "  Tip: on the first run the Keychain may ask permission — choose\n"
+        "  Tip: on the first run the Keychain may ask permission : choose\n"
         "  \"Always Allow\" so the scheduled task runs without a prompt."
     )
     return 0

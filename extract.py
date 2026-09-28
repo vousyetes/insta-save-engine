@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AI extraction pass — enrichit les Content Ideas Notion avec Ollama (local, gratuit).
+AI extraction pass : enrichit les Content Ideas Notion avec Ollama (local, gratuit).
 
 Pour chaque post classifié, extrait l'essentiel selon la catégorie :
   PROMPT     → le prompt utilisable, nettoyé, copy-paste ready
@@ -48,13 +48,13 @@ PROMPTS = {
     "PROMPT": """Tu reçois le contenu d'un post Instagram (caption + éventuellement le texte lu dans la vidéo ou les slides) censé contenir un ou plusieurs prompts IA.
 
 RÈGLES STRICTES :
-1. Si AUCUN prompt réel n'est présent — le post dit juste « commente X pour recevoir le prompt », ou il DÉCRIT un prompt sans le donner — réponds EXACTEMENT ce seul mot : AUCUN_PROMPT
+1. Si AUCUN prompt réel n'est présent : le post dit juste « commente X pour recevoir le prompt », ou il DÉCRIT un prompt sans le donner : réponds EXACTEMENT ce seul mot : AUCUN_PROMPT
 2. Si UN seul prompt est présent : renvoie son TEXTE VERBATIM, nettoyé (retire hashtags, mentions @, emojis de déco, phrases d'accroche du créateur). Ne le résume pas, ne le décris pas.
-3. Si PLUSIEURS prompts distincts sont présents : sépare-les EXACTEMENT ainsi —
-### Prompt 1 — <titre court>
+3. Si PLUSIEURS prompts distincts sont présents : sépare-les EXACTEMENT ainsi :
+### Prompt 1 : <titre court>
 <texte verbatim du prompt 1>
 
-### Prompt 2 — <titre court>
+### Prompt 2 : <titre court>
 <texte verbatim du prompt 2>
 
 Ne donne JAMAIS une description de ce que fait le prompt. Donne le texte qu'on doit coller tel quel dans l'IA.
@@ -73,7 +73,7 @@ Sinon, extrais une liste structurée de chaque repo/ressource RÉELLEMENT nommé
 - URL GitHub si présente (sinon "URL non mentionnée")
 - Ce qu'il fait en 1 phrase
 
-Format : "- **NomRepo** (github.com/...) — Description courte"
+Format : "- **NomRepo** (github.com/...) : Description courte"
 Réponds uniquement avec la liste, rien d'autre.
 
 CONTENU DU POST:
@@ -86,7 +86,7 @@ REPOS EXTRAITS:""",
 Si aucun outil n'est RÉELLEMENT nommé (juste « commente pour le lien ») → réponds EXACTEMENT : AUCUN_CONTENU
 
 Sinon, pour CHAQUE outil nommé :
-- **Nom de l'outil** — ce qu'il fait (1-2 phrases) — lien si mentionné
+- **Nom de l'outil** : ce qu'il fait (1-2 phrases) : lien si mentionné
 
 Réponds direct et factuel, une puce par outil.
 
@@ -196,10 +196,10 @@ def extract_with_ollama(category: str, caption: str, url: str) -> str:
             result = r.json().get("response", "").strip()
             if result:
                 return result
-            # Empty response — retry
+            # Empty response : retry
             time.sleep(1)
         except requests.exceptions.ConnectionError:
-            print("  ⚠ Ollama non disponible — lance 'ollama serve' dans un terminal")
+            print("  ⚠ Ollama non disponible : lance 'ollama serve' dans un terminal")
             return ""
         except Exception as e:
             if attempt < 2:
@@ -247,7 +247,10 @@ def fetch_pages(category: str = None, limit: int = 500,
     raw = []
     cursor = None
     while True:
-        body = {"page_size": 100}
+        body = {
+            "page_size": 100,
+            "sorts": [{"timestamp": "created_time", "direction": "descending"}],
+        }
         if not force:
             body["filter"] = {
                 "property": "Angle",
@@ -297,7 +300,7 @@ def get_prop_text(props, key) -> str:
 
 
 def get_category_from_name(name: str) -> str:
-    """Detect the true category from a title prefix — handles old (mixed-case
+    """Detect the true category from a title prefix : handles old (mixed-case
     sub-type) and new (uppercase) nomenclatures. Case-insensitive keyword map."""
     m = re.match(r'\[([^\]]+)\]', name)
     if not m:
@@ -402,14 +405,20 @@ def update_page_with_extraction(page_id: str, extraction: str, old_angle: str,
         "object": "block",
         "type": "callout",
         "callout": {
-            "rich_text": [{"type": "text", "text": {"content": extraction[:1990]}}],
+            "rich_text": [
+                {"type": "text", "text": {"content": extraction[i:i + 1900]}}
+                for i in range(0, min(len(extraction), 19000), 1900)
+            ],
             "icon": {"type": "emoji", "emoji": "🧠"},
             "color": "blue_background"
         }
     }]
     # Preserve the raw media reading in a collapsible toggle (OCR + transcript)
     if media_bundle:
-        chunks = [media_bundle[i:i+1900] for i in range(0, min(len(media_bundle), 5700), 1900)]
+        chunks = [
+            media_bundle[i:i + 1900]
+            for i in range(0, min(len(media_bundle), 30000), 1900)
+        ]
         children.append({
             "object": "block",
             "type": "toggle",
@@ -478,7 +487,7 @@ def main():
     ig_session = None
     if enrich:
         import enrich as E
-        print("Enrichissement activé — construction de la map média...")
+        print("Enrichissement activé : construction de la map média...")
         saves_map = E.build_saves_map(TOKEN, cfg["instagram_saves_db_id"])
         ig_session = E.make_ig_session()
         print(f"  {len(saves_map)} posts mappés (média récupérable)\n")
@@ -488,7 +497,7 @@ def main():
     print(f"Found {len(pages)} pages to process\n")
 
     if not pages:
-        print("Nothing to do — all pages already extracted.")
+        print("Nothing to do : all pages already extracted.")
         return
 
     counts = {"ok": 0, "skip": 0, "error": 0, "enriched": 0}
@@ -530,7 +539,7 @@ def main():
             will_enrich = is_visual and (enrich_all or thin or bait)
 
             # Efficiency: when re-processing (force) an already-extracted page that
-            # won't be enriched, skip it — its text extraction is already fine.
+            # won't be enriched, skip it : its text extraction is already fine.
             # (Sauf --reextract : on veut ré-appliquer le nouveau prompt partout.)
             if force and (EXTRACT_MARKER in angle) and not will_enrich and not reextract:
                 counts["skip"] += 1
@@ -548,7 +557,7 @@ def main():
                     counts["enriched"] += 1
 
         if not caption or len(caption.strip()) < 20:
-            print(f"[{i:3}/{len(pages)}] ⊘ skip (no content) — {strip_prefix(name)[:55]}")
+            print(f"[{i:3}/{len(pages)}] ⊘ skip (no content) : {strip_prefix(name)[:55]}")
             counts["skip"] += 1
             continue
 
@@ -556,13 +565,13 @@ def main():
 
         if not extraction:
             counts["error"] += 1
-            print(f"[{i:3}/{len(pages)}] ⚠ [{cat:<12}] Ollama vide — {strip_prefix(name)[:45]}")
+            print(f"[{i:3}/{len(pages)}] ⚠ [{cat:<12}] Ollama vide : {strip_prefix(name)[:45]}")
             continue
 
         # Teaser DM-gated : le modèle a signalé qu'il n'y a pas de contenu réel
         # (AUCUN_PROMPT / AUCUN_CONTENU / AUCUN_REPO …).
         if extraction.strip().upper().replace("*", "").startswith("AUCUN_"):
-            extraction = ("⏳ Contenu non présent dans le post — le créateur l'envoie en DM "
+            extraction = ("⏳ Contenu non présent dans le post : le créateur l'envoie en DM "
                           "après commentaire. Rien d'exploitable ici.")
             tag = "⏳"
         else:

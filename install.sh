@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# install.sh — one-shot setup for Insta Save Engine (macOS, Apple Silicon or Intel).
+# install.sh : one-shot setup for Insta Save Engine (macOS, Apple Silicon or Intel).
 #
 #   ./install.sh          full install  (Python + Ollama models + whisper)
 #   ./install.sh --light  light mode    (Python only: sync + classification,
@@ -49,14 +49,24 @@ python -m pip install --quiet --upgrade pip
 python -m pip install --quiet -r requirements.txt
 ok "Python dependencies installed"
 
+# yt-dlp is used by inbox.py to resolve links shared from an iPhone.
+say "yt-dlp (optional iPhone share inbox)"
+if command -v yt-dlp >/dev/null 2>&1; then
+  ok "yt-dlp present"
+elif command -v brew >/dev/null 2>&1; then
+  brew install yt-dlp && ok "yt-dlp installed"
+else
+  warn "yt-dlp missing and Homebrew not found. inbox.py will stay unavailable."
+fi
+
 # ── 2. config.json ────────────────────────────────────────────────────────────
 say "Config file"
 if [[ ! -f config.json ]]; then
   cp config.example.json config.json
   chmod 600 config.json
-  ok "Created config.json from the example (fill it in — see README)"
+  ok "Created config.json from the example (fill it in : see README)"
 else
-  ok "config.json already exists — left untouched"
+  ok "config.json already exists : left untouched"
 fi
 
 # ── 3. ffmpeg (needed for media reading) ──────────────────────────────────────
@@ -121,7 +131,7 @@ if [[ $LIGHT -eq 0 ]]; then
     curl -L --fail -o "$WMODEL" \
       "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin" \
       && ok "Whisper model downloaded" \
-      || warn "Whisper model download failed — reels will be OCR-only until you retry."
+      || warn "Whisper model download failed : reels will be OCR-only until you retry."
   else
     ok "Whisper model already present"
   fi
@@ -159,4 +169,4 @@ echo "   1. Fill in config.json (Notion token + parent page id)"
 echo "   2. .venv/bin/python setup_notion.py     # creates the 2 Notion databases"
 echo "   3. .venv/bin/python setup_auth.py       # logs into Instagram once"
 echo "   4. .venv/bin/python sync.py             # first sync"
-[[ $LIGHT -eq 1 ]] && echo "   (light mode: skip extract.py — you get sync + classification only)"
+[[ $LIGHT -eq 1 ]] && echo "   (light mode: skip extract.py : you get sync + classification only)"

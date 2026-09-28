@@ -133,38 +133,38 @@ def classify(author: str, caption: str, url: str, media_type: str) -> tuple:
     auth_lower = author.lower().replace("@", "")
     url_lower = (url or "").lower()
 
-    # PROMPT — highest priority (explicit prompt content)
+    # PROMPT : highest priority (explicit prompt content)
     for kw in PROMPT_KEYWORDS:
         if kw in cap_lower:
             return ("PROMPT", extract_prompt(caption))
 
-    # REPO — GitHub/open source links or keywords
+    # REPO : GitHub/open source links or keywords
     repo_score = sum(1 for kw in REPO_KEYWORDS if kw in cap_lower or kw in url_lower)
     if repo_score >= 1:
         return ("REPO", extract_first_lines(caption, 3))
 
-    # WORKFLOW — multi-keyword automation systems
+    # WORKFLOW : multi-keyword automation systems
     wf_score = sum(1 for kw in WORKFLOW_KEYWORDS if kw in cap_lower)
     if wf_score >= 2 or (wf_score >= 1 and auth_lower in AI_TOOL_AUTHORS):
         return ("WORKFLOW", extract_first_lines(caption, 3))
 
-    # TUTO — step-by-step content
+    # TUTO : step-by-step content
     for kw in TUTO_KEYWORDS:
         if kw in cap_lower:
             return ("TUTO", extract_first_lines(caption, 4))
 
-    # ASTUCE — quick tips and tricks
+    # ASTUCE : quick tips and tricks
     for kw in ASTUCE_KEYWORDS:
         if kw in cap_lower:
             return ("ASTUCE", extract_first_lines(caption, 3))
 
-    # OUTIL — tools/apps (not workflows)
+    # OUTIL : tools/apps (not workflows)
     outil_score = sum(1 for kw in OUTIL_KEYWORDS if kw in cap_lower)
     outil_excluded = any(kw in cap_lower for kw in OUTIL_EXCLUDE)
     if outil_score >= 2 and not outil_excluded:
         return ("OUTIL", extract_first_lines(caption, 3))
 
-    # VIDÉO IDEA — content creation hooks/scripts
+    # VIDÉO IDEA : content creation hooks/scripts
     for kw in VIDEO_IDEA_KEYWORDS:
         if kw in cap_lower:
             return ("VIDÉO IDEA", extract_first_lines(caption, 3))
@@ -173,7 +173,7 @@ def classify(author: str, caption: str, url: str, media_type: str) -> tuple:
     if auth_lower in AI_TOOL_AUTHORS and media_type in ("Reel", "Carousel"):
         return ("VIDÉO IDEA", extract_first_lines(caption, 3))
 
-    # INSPIRATION — everything else
+    # INSPIRATION : everything else
     return ("INSPIRATION", "")
 
 
@@ -411,7 +411,7 @@ def main():
                          thumbnail_url, pillar=pillar)
         if ok:
             mark_reviewed(page_id)
-            print(f"[{i:3}/{len(posts)}] ★ [{category:<14}] @{author} — {(caption or url)[:50]}")
+            print(f"[{i:3}/{len(posts)}] ★ [{category:<14}] @{author} : {(caption or url)[:50]}")
         else:
             errors += 1
             print(f"[{i:3}/{len(posts)}] ✗ Failed for @{author}")

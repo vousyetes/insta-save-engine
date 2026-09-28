@@ -2,7 +2,7 @@
 
 Transforme tes posts Instagram sauvegardés en une vraie base d'idées de contenu, rangée et exploitable, dans Notion. En local, sur ton Mac, gratuitement.
 
-Tu sauvegardes des posts sur Instagram toute la journée (des prompts, des outils, des repos, des idées de vidéo) et ils dorment dans un dossier que tu ne rouvres jamais. Cet outil va les chercher, les classe en 8 catégories, lit le contenu qui est dans l'image ou dans l'audio du reel (pas juste la légende), en extrait l'essentiel et écrit tout ça dans Notion. Tu te retrouves avec une bibliothèque cherchable au lieu d'un cimetière de saves.
+Tu sauvegardes des posts sur Instagram toute la journée (des prompts, des outils, des repos, des idées de vidéo) et ils dorment dans un dossier que tu ne rouvres jamais. Cet outil va les chercher, crée des catégories adaptées à ce que tu sauvegardes, lit le contenu qui est dans l'image ou dans l'audio du reel (pas juste la légende), en extrait l'essentiel et écrit tout ça dans Notion. Tu te retrouves avec une bibliothèque cherchable au lieu d'un cimetière de saves.
 
 Fait par [vousyetes](https://instagram.com/vousyetes). Licence MIT, tu en fais ce que tu veux.
 
@@ -15,6 +15,9 @@ Fait par [vousyetes](https://instagram.com/vousyetes). Licence MIT, tu en fais c
 3. **Lit le média** quand la valeur n'est pas dans la légende : OCR des slides d'un carrousel, transcription de l'audio d'un reel, texte à l'écran. Tout en local, aucune donnée qui part ailleurs.
 4. **Extrait** le contenu utile : le prompt copiable, le nom de l'outil et son lien, les étapes d'un workflow, l'astuce en une phrase.
 5. **Écrit** le tout dans deux bases Notion : une pour les saves bruts, une pour les idées de contenu prêtes à produire.
+6. **Récupère les liens partagés depuis l'iPhone** sans ouvrir de nouvelle session Instagram.
+7. **Déduit les thèmes récurrents** dans ta catégorie fourre-tout avec Ollama, sans modifier Notion.
+8. **Construit un index hors ligne** en JSONL, Markdown et HTML, avec une recherche locale en ligne de commande.
 
 Tout tourne sur ta machine. Les modèles IA sont locaux (Ollama + whisper). Ça ne coûte rien à faire tourner, et tes saves ne quittent jamais ton Mac.
 
@@ -179,6 +182,69 @@ Si tu utilises Claude Code, deux commandes sont fournies dans `.claude/commands/
 
 ---
 
+## Partager un post depuis l'iPhone, sans session Instagram
+
+`inbox.py` lit un simple fichier texte synchronisé par iCloud Drive. Chaque ligne peut contenir un lien Instagram ou TikTok. Le script utilise les métadonnées publiques récupérées par `yt-dlp`, vérifie les doublons dans Notion, crée les nouvelles fiches, puis retire du fichier les lignes traitées. Une ligne en échec reste dans l'inbox pour le prochain passage.
+
+1. Sur l'iPhone, crée un raccourci disponible dans la feuille de partage.
+2. Fais-lui ajouter l'URL reçue à un fichier texte dans iCloud Drive, une URL par ligne.
+3. Sur le Mac, retrouve ce fichier dans le Finder, maintiens Option, fais un clic droit, puis choisis **Copier comme nom de chemin**.
+4. Colle ce chemin dans `config.json` sous `iphone_inbox_path`.
+
+Teste d'abord sans rien écrire :
+
+```bash
+.venv/bin/python inbox.py --dry-run
+```
+
+Puis importe réellement les liens :
+
+```bash
+.venv/bin/python inbox.py
+```
+
+Tu peux aussi fournir un fichier ponctuel avec `--file /chemin/vers/inbox.txt`. Cette fonction a besoin de `yt-dlp`, installé par `install.sh`. En installation manuelle : `brew install yt-dlp`.
+
+---
+
+## Trouver les thèmes cachés dans le fourre-tout
+
+`themes.py` lit les fiches dont le titre commence par la catégorie configurée dans `catch_all_category` (par défaut `INSPIRATION`). Ollama attribue un ou deux thèmes courts à chaque fiche, réutilise les thèmes existants quand ils conviennent, puis écrit deux fichiers locaux ignorés par git :
+
+- `themes-cache.json`, utilisé par l'index et par les passages suivants.
+- `themes-proposed.md`, rapport lisible avec les volumes et quelques exemples.
+
+Le script ne modifie jamais Notion.
+
+```bash
+.venv/bin/python themes.py
+.venv/bin/python themes.py --category INSPIRATION --min 5
+.venv/bin/python themes.py --refresh --limit 40
+```
+
+Il faut le modèle texte configuré dans `text_model` et un serveur Ollama actif.
+
+---
+
+## Construire et chercher l'index hors ligne
+
+`index.py` lit les deux bases Notion, rapproche chaque idée de sa source, ajoute les thèmes du cache, puis produit :
+
+- `index/index.jsonl`, la source compacte utilisée par la recherche.
+- `index/index.md`, un index lisible partout.
+- `index/vault.html`, une interface autonome avec recherche et filtre par catégorie.
+
+```bash
+.venv/bin/python index.py
+open index/vault.html
+.venv/bin/python demande.py "workflow vidéo"
+.venv/bin/python demande.py "recette rapide" --limit 10
+```
+
+`demande.py` ne fait aucun appel réseau et n'utilise aucun modèle. Si tu veux une copie du Markdown et du HTML dans un autre dossier synchronisé, indique son chemin dans `offline_index_copy_dir`. Laisse le champ vide pour désactiver la copie.
+
+---
+
 ## Installation manuelle (si tu préfères tout faire à la main)
 
 Le script `install.sh` fait exactement ça, mais si tu veux comprendre ou contrôler chaque étape :
@@ -195,15 +261,18 @@ cp config.example.json config.json
 chmod 600 config.json
 # (remplis config.json : jeton Notion + id de la page parente)
 
-# 3. Outils système (mode complet seulement)
+# 3. Outil de partage iPhone
+brew install yt-dlp
+
+# 4. Outils système (mode complet seulement)
 brew install ffmpeg whisper-cpp
 brew install ollama            # ou télécharge l'app sur ollama.com
 
-# 4. Modèles IA locaux (mode complet seulement, ~26 Go)
+# 5. Modèles IA locaux (mode complet seulement, ~26 Go)
 ollama pull qwen2.5vl:7b       # vision : lit le texte dans les images
 ollama pull gpt-oss:20b        # texte : extrait l'essentiel
 
-# 5. Modèle whisper pour transcrire l'audio des reels (~550 Mo)
+# 6. Modèle whisper pour transcrire l'audio des reels (~550 Mo)
 mkdir -p models
 curl -L -o models/ggml-large-v3-turbo-q5_0.bin \
   https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin
@@ -222,6 +291,9 @@ Le champ `whisper_model_path` dans `config.json` pointe vers ton modèle whisper
   "notion_parent_page_id": "...",               // la page qui accueille les 2 bases
   "instagram_saves_db_id": "",                  // rempli par setup_notion.py
   "content_ideas_db_id": "",                    // rempli par setup_notion.py
+  "iphone_inbox_path": "",                      // fichier texte iCloud alimenté par le raccourci iPhone
+  "catch_all_category": "INSPIRATION",          // catégorie analysée par themes.py
+  "offline_index_copy_dir": "",                 // copie facultative de l'index HTML et Markdown
   "instagram_collections": [],                  // [] = toutes tes collections ; sinon ["AI", "Inspiration"]
   "categories": [],                              // rempli au 1er run par l'IA (catégories taillées pour toi)
   "instagram_expected_user_id": "",             // laisse vide (garde-fou multi-comptes, optionnel)
@@ -282,6 +354,9 @@ Le pipeline est volontairement découpé en scripts indépendants, pour que chaq
 - **`enrich.py`** : la lecture du média. Quand la valeur est dans l'image ou la vidéo, on télécharge le média et on le fait lire par les modèles locaux. La résolution vision est montée à 1536px parce qu'en dessous, le petit texte se coupe et le modèle se met à inventer des noms.
 - **`extract.py`** : l'extraction finale. Il envoie la légende (plus le texte lu dans le média si `--enrich`) au modèle texte local, avec un prompt spécifique à chaque catégorie, et écrit le résultat propre dans Notion. Il garde aussi le texte brut lu dans le média dans un bloc repliable, au cas où tu veuilles y revenir.
 - **`query.py`** : la recherche, pour piocher dans ta base depuis le terminal.
+- **`inbox.py`** : importe les liens partagés depuis un fichier iCloud sans utiliser la session Instagram du moteur.
+- **`themes.py`** : repère localement les thèmes qui se répètent dans la catégorie fourre-tout et produit un rapport sans écrire dans Notion.
+- **`index.py` / `demande.py`** : construisent une archive autonome et permettent de l'interroger hors ligne.
 
 Le fil rouge : tout est local, tout est gratuit à faire tourner, et chaque brique est idempotente (tu peux relancer sans tout casser).
 

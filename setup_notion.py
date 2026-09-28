@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-setup_notion.py — Create the two Notion databases automatically.
+setup_notion.py : Create the two Notion databases automatically.
 
 Instead of building the databases by hand, this script asks Notion to create
 them for you, with the exact property schemas the pipeline expects, then writes
@@ -149,7 +149,7 @@ def main() -> int:
         print("   • run:  .venv/bin/python setup_notion.py <page-url-or-id>")
         return 1
 
-    print("── Insta Save Engine — Notion setup ────────────────────────────────")
+    print("── Insta Save Engine : Notion setup ────────────────────────────────")
     print(f"Parent page: {parent_page_id}\n")
 
     try:

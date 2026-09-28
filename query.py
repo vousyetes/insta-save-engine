@@ -102,7 +102,7 @@ def format_page(page, i: int) -> str:
 
 
 def summary_mode():
-    print("📊 Content Ideas — Résumé par catégorie\n")
+    print("📊 Content Ideas : Résumé par catégorie\n")
     total = 0
     for cat in CATEGORIES:
         pages = fetch_all_ideas(category=cat, limit=500)
@@ -121,7 +121,7 @@ def is_teaser(page) -> bool:
 def search_mode(category: str, keyword: str, limit: int, show_teasers: bool = False):
     label = f"[{category}]" if category else "toutes catégories"
     kw_label = f" + '{keyword}'" if keyword else ""
-    print(f"🔍 {label}{kw_label} — {limit} max\n")
+    print(f"🔍 {label}{kw_label} : {limit} max\n")
 
     # On récupère large puis on filtre les teasers (sauf --teasers)
     raw = fetch_all_ideas(category=category, keyword=keyword, limit=limit * 4)
@@ -140,7 +140,7 @@ def search_mode(category: str, keyword: str, limit: int, show_teasers: bool = Fa
     if not pages:
         msg = "  Aucun résultat exploitable."
         if hidden:
-            msg += f" ({hidden} teaser(s) ⏳ masqué(s) — ajoute --teasers pour les voir)"
+            msg += f" ({hidden} teaser(s) ⏳ masqué(s) : ajoute --teasers pour les voir)"
         print(msg)
         return
 
